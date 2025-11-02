@@ -1,9 +1,9 @@
-# ESP32-S3-POE-ETH-8DI-8RO Fallback Modes Ethernet,WiFi,AP-Mode
+# ESP32-S3-POE-ETH-8DI-8RO Fallback Modes Ethernet,WiFi,AP-Mode,MQTT
 This is based on the Waveshare ESP32-S3-POE-ETH-8RO-8DI module shown below.
 
 
 **Author:** Antony E. Brinlee  
-**Release:** Rev 1  
+**Release:** Rev 2  
 **License:** GNU 2.0
 
 ---
