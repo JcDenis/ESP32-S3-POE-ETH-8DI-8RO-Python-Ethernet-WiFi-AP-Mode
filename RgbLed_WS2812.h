@@ -16,6 +16,7 @@
 
 class RgbLed {
 public:
+
   void begin();
 
   // Hard states
@@ -57,6 +58,7 @@ private:
 
   // current color
   uint8_t _r = 0, _g = 0, _b = 0;
+  uint8_t _mode_r = 255, _mode_g = 255, _mode_b = 255; // default white  
   CRGB    _leds[NUM_LEDS];
 
   // heartbeat state
@@ -119,6 +121,8 @@ private:
 
   // current color
   uint8_t _r = 0, _g = 0, _b = 0;
+  uint8_t _mode_r = 0, _mode_g = 0, _mode_b = 0;
+  
   CRGB    _leds[NUM_LEDS];
 
   // heartbeat state

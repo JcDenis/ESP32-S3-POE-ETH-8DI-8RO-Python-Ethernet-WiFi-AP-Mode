@@ -36,11 +36,34 @@ void RgbLed::setRGB(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void RgbLed::setForMask(uint8_t mask) {
+  // --- Network Mode indicators (special masks) ---
+  // 1 = AP (Red), 2 = WiFi (Green), 3 = Ethernet (Blue)
+
   if (mask == 0) {
-    // idle state: keep LED off; heartbeat tick() will flash if enabled
     _idle = true;
     _inPulse = false;
     off();
+    return;
+  }
+  else if (mask == 1) {  // AP = Red
+    _mode_r = _r = 255; _mode_g = _g = 0; _mode_b = _b = 0;
+    show(); delay(100); off();
+    _idle = true;
+    _nextBeatMs = millis() + 5000;
+    return;
+  }
+  else if (mask == 2) {  // Wi-Fi = Green
+    _mode_r = _r = 0; _mode_g = _g = 255; _mode_b = _b = 0;
+    show(); delay(100); off();
+    _idle = true;
+    _nextBeatMs = millis() + 5000;
+    return;
+  }
+  else if (mask == 3) {  // Ethernet = Blue
+    _mode_r = _r = 0; _mode_g = _g = 0; _mode_b = _b = 255;
+    show(); delay(100); off();
+    _idle = true;
+    _nextBeatMs = millis() + 5000;
     return;
   }
 
@@ -73,7 +96,7 @@ void RgbLed::setForMask(uint8_t mask) {
   _inPulse = false;
   show();
 }
-
+ 
 void RgbLed::show() {
   _leds[0].setRGB(_r, _g, _b);
   FastLED.show();
@@ -83,7 +106,7 @@ void RgbLed::startHeartbeatPulse_() {
   // briefly show white, then turn back off
   _inPulse = true;
   _beatOffMs = millis() + HEARTBEAT_PULSE_MS;
-  _leds[0].setRGB(255, 255, 255);
+  _leds[0].setRGB(_mode_r, _mode_g, _mode_b);   // use whatever color was last set
   FastLED.show();
 }
 

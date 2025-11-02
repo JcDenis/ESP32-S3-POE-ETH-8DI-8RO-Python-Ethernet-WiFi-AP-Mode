@@ -2,7 +2,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
-
+#include <esp_mac.h>
 /*
   BoardPins.h — Waveshare ESP32-S3-PoE-ETH-8DI-8RO
   Single source of truth for all board pin mappings & a few tiny helpers.
@@ -20,6 +20,10 @@ namespace BoardPins {
   inline constexpr int SPI_SCLK   = 15;  // ETH_SCLK (clock)
   inline constexpr int SPI_MISO   = 14;  // ETH_MISO (master in slave out)
   inline constexpr int SPI_MOSI   = 13;  // ETH_MOSI (master out slave in)
+  inline void loadEfuseMac(uint8_t *mac) {
+    // 0 = base MAC address from eFuse
+    esp_read_mac(mac, ESP_MAC_ETH);
+  }
 
   // --------- I2C (TCA9554 expander + RTC, etc.) ---------
   // Pins for I2C bus, used for the TCA9554 I/O expander controlling relays.
