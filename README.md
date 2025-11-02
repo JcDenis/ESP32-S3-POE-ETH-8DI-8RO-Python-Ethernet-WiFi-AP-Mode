@@ -1,387 +1,1040 @@
-# ESP32-S3-POE-ETH-8DI-8RO Fallback Modes Ethernet,WiFi,AP-Mode,MQTT
-This is based on the Waveshare ESP32-S3-POE-ETH-8RO-8DI module shown below.
+# ESP32-S3-POE-ETH-8DI-8RO - Multi-Network Relay Controller
 
+A comprehensive Arduino firmware for the Waveshare ESP32-S3-POE-ETH-8DI-8RO board with support for Ethernet, WiFi, and Access Point modes, featuring automatic failover, web UI, MQTT integration, and RGB status LED.
 
-**Author:** Antony E. Brinlee  
-**Release:** Rev 2  
-**License:** GNU 2.0
+![Waveshare ESP32-S3-POE-ETH-8DI-8RO](https://www.waveshare.com/w/upload/thumb/a/a6/ESP32-S3-ETH-8DI-8RO-1.jpg/500px-ESP32-S3-ETH-8DI-8RO-1.jpg)
 
----
+## 📋 Table of Contents
 
-## 1) Purpose &amp; Scope
+- [Features](#features)
+- [Hardware Overview](#hardware-overview)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Network Modes](#network-modes)
+- [Web Interface](#web-interface)
+- [API Endpoints](#api-endpoints)
+- [MQTT Integration](#mqtt-integration)
+- [RGB Status LED](#rgb-status-led)
+- [File Structure](#file-structure)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
-This page is the single, copy‑pastable runbook for engineers to:
+## ✨ Features
 
-- Install the required toolchains and libraries
-- Build and flash the firmware
-- Run the device for lab/line **test automation** (HTTP/MQTT ready patterns)
-- Diagnose and fix common issues fast
+- **Multi-Network Support**:
+  - Ethernet (W5500) with PoE capability
+  - WiFi Station mode
+  - WiFi Access Point fallback
+  - Automatic priority-based failover (Ethernet → WiFi → AP)
+  - ~800ms debounce for stable network transitions
 
-The code in this release targets the **Waveshare ESP32‑S3‑PoE‑ETH‑8DI‑8RO** (a.k.a. “8‑channel relay board” with 8 digital inputs). It uses:
+- **8-Channel Relay Control**:
+  - TCA9554 I2C I/O expander
+  - Individual relay control via web UI and API
+  - Batch control with mask operations
+  - Visual feedback with color-coded buttons
 
-- **ESP32‑S3** (dual‑core, USB‑CDC flashing)
-- **I²C TCA9554** 8‑bit expander for relays/DIs
-- **WS2812 RGB LED** (status)
-- **Wi‑Fi** primary; **W5500 Ethernet** optional (SPI)
-- A small embedded **web UI** and simple **HTTP endpoints** suitable for automation scripts
+- **8 Digital Inputs**:
+  - Opto-isolated active-low inputs
+  - Real-time status monitoring
+  - Change detection with logging
+  - Web UI radio button indicators
 
-> **Repository layout (Rev 1 zip):**
-> 
-> - `esp32_s3_8ch_relayboard_rgb.ino` – main sketch
-> - `BoardPins.h` – **single source of truth** for pins &amp; tiny helpers
-> - `RgbLed_WS2812.h/.cpp` – status LED wrapper
-> - `StateHelpers.h` – state/bitfield helpers
+- **Web Interface**:
+  - Responsive single-page application
+  - Real-time status updates (500ms polling)
+  - Color-coded relay buttons
+  - Digital input indicators
+  - Event log viewer
+  - Network status display
+  - MQTT connection indicator
 
-> If you add files later, update this page’s **Dependencies** and **Build steps**.
+- **MQTT Support**:
+  - Automatic connection and reconnection
+  - Individual relay state publishing (`relayboard/relay/<idx>/state`)
+  - Relay control via commands (`relayboard/relay/<idx>/command`)
+  - Digital input state publishing (`relayboard/input/<idx>/state`)
+  - Bulk state publishing (all relays/inputs)
+  - Authentication support
 
----
+- **RGB Status LED** (WS2812):
+  - Network mode indication:
+    - 🔴 Red blink = Access Point mode
+    - 🟢 Green blink = WiFi Station mode
+    - 🔵 Blue blink = Ethernet mode
+  - Relay state visualization (color-coded per channel)
+  - Heartbeat pulse when idle (every 5 seconds)
+  - All relays on = White
+  - Mixed relays = Blended color
 
-## 2) Prerequisites
+- **OTA Updates**:
+  - ArduinoOTA support (WiFi/AP modes only)
+  - Password-protected
+  - Network-based firmware updates
 
-### 2.1 OS / Tools
+- **Advanced Features**:
+  - mDNS for easy discovery (`relayboard-xx.local`)
+  - In-memory event logging (200 lines)
+  - API for programmatic control
+  - Serial output mirroring
+  - DHCP support with Ethernet
+  - Static IP configuration option
 
-- **Windows 11**, Linux, or macOS
-- **Arduino IDE 2.x** (preferred for Rev 1)  
-    *PlatformIO is fine, but the steps below are written for Arduino.*
-- **USB‑C cable** for the ESP32‑S3’s native USB
-- (Optional) **DHCP reservation** on your router for a stable IP when on Ethernet
+## 🔧 Hardware Overview
 
-### 2.2 ESP32 Core &amp; Board Setup
+### Board Specifications
 
-1. Open Arduino IDE → **File → Preferences** → *Additional Boards Manager URLs*:
-    
-    
-    - `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
-2. **Tools → Board Manager** → search **ESP32** → install **Espressif ESP32** core (**3.x** recommended).
-3. **Tools → Board** → pick **ESP32S3 Dev Module**.
-4. Recommended **Tools** settings (match our lab images):
-    
-    
-    - USB CDC On Boot: **Enabled**
-    - USB Mode: **Hardware CDC**
-    - Flash Size: **16MB** (if your board variant has it)
-    - PSRAM: **OPI PSRAM** (if present)
-    - CPU Freq: **240 MHz**
-    - Partition Scheme: **Default** or **Custom** (if the sketch includes one)
+- **Microcontroller**: ESP32-S3-WROOM-1U-N16R8
+  - Dual-core Xtensa LX7 @ 240MHz
+  - 16MB Flash
+  - 8MB PSRAM (Octal SPI)
+  - 2.4GHz WiFi + Bluetooth LE
 
-> If you don’t see a serial port after flashing, re‑select **/dev/ttyACM0** (Linux) or the **USB COM** port (Windows), or press the on‑board **RST** button once.
+- **Networking**:
+  - W5500 Ethernet controller (SPI)
+  - PoE support (IEEE 802.3af)
+  - Built-in WiFi
 
-### 2.3 Required Arduino Libraries
+- **I/O**:
+  - 8x relay outputs (10A @ 250V AC / 30V DC)
+  - 8x opto-isolated digital inputs
+  - TCA9554 I2C I/O expander (address 0x20)
 
-Install via **Library Manager** unless noted:
+- **Peripherals**:
+  - WS2812 RGB LED (GPIO 38)
+  - Buzzer (GPIO 46)
+  - RS485 transceiver (GPIO 17/18)
+  - SD card interface
+  - USB-C for power/programming
 
-- **Rob Tillaart – TCA9554** (I²C GPIO expander)
-- **FastLED** *or* a minimal WS2812 driver (Rev 1 ships `RgbLed_WS2812.*`, no external lib needed. If you prefer FastLED, keep the versions consistent across the team.)
-- **ArduinoOTA** (bundled with ESP32 core)
-- **WiFi**, **Wire**, **SPI** (bundled with ESP32 core)
-- **ETH** / W5500 support – if you enable Ethernet in code, stick to ESP32 core 3.x where W5500 support is stable (we use a light‑touch bring‑up; avoid third‑party network stacks unless necessary).
-- *(Optional)* **ArduinoJson** if you add JSON endpoints later.
-- Ethernet\_Generic
+- **Power**:
+  - 7-36V DC via screw terminal
+  - 5V USB-C
+  - PoE (48V)
 
-> **Pin &amp; feature decisions live in `BoardPins.h`.** Treat it as the authoritative map.
+### Pin Mappings
 
----
+All pin definitions are centralized in `BoardPins.h`:
 
-## 3) Getting the Code
+```cpp
+// Ethernet (W5500 SPI)
+W5500_CS   = 16
+W5500_INT  = 12
+SPI_SCLK   = 15
+SPI_MISO   = 14
+SPI_MOSI   = 13
 
-1. Obtain the **Rev 1 zip** and extract it into your Arduino sketch folder (e.g., `~/Arduino/ESP32_8CH_Relay/`).
-2. Ensure the primary file is named **`esp32_s3_8ch_relayboard_rgb/esp32_s3_8ch_relayboard_rgb.ino`** (folder and .ino must match for Arduino).
-3. Confirm the following files exist at the sketch root:
-    
-    
-    - `esp32_s3_8ch_relayboard_rgb.ino`
-    - `BoardPins.h`
-    - `RgbLed_WS2812.h`, `RgbLed_WS2812.cpp`
-    - `StateHelpers.h`
+// I2C (TCA9554)
+I2C_SDA    = 42
+I2C_SCL    = 41
+TCA9554_ADDR = 0x20
 
----
+// Digital Inputs (opto-isolated, active-low)
+DI_PINS[8] = { 4, 5, 6, 7, 8, 9, 10, 11 }
 
-## 4) Configuration
+// Peripherals
+RGB_LED    = 38
+BUZZER     = 46
+BOOT_BTN   = 0
+RS485_TX   = 17
+RS485_RX   = 18
+```
 
-Open **`BoardPins.h`** and review:
+## 📦 Prerequisites
 
-- **I²C pins**: `BoardPins::I2C_SDA`, `BoardPins::I2C_SCL`
-- **TCA9554 address** (commonly `0x20` – `0x27` depending on A0‑A2)
-- **Relay mapping &amp; polarity**: this board’s relays are **active‑low**. Our helper functions abstract this; still, verify the intended default state (all‑off at boot).
-- **DI inputs**: confirm pull‑ups vs external biasing.
-- **WS2812 status LED pin** (often **GPIO 38** on Waveshare boards) &amp; LED count (usually 1)
-- **W5500 SPI** (if used): `CS`, `MOSI`, `MISO`, `SCLK`, and optional `RST`.
-- **mDNS / Hostname**: choose a unique name (e.g., `relayboard-xx`).
+### Software Requirements
 
-**Wi‑Fi credentials**: If stored in code, set `WIFI_SSID` / `WIFI_PASS`. For production, prefer a small `secrets.h` (not checked in) or provisioning.
+- **Arduino IDE** 2.0 or newer (recommended)
+  - Or PlatformIO (alternative)
+- **ESP32 Board Support**: Espressif ESP32 v3.x
+  - Install via Board Manager: Tools → Board Manager → "ESP32" by Espressif
 
----
+### Required Libraries
 
-## 5) Build &amp; Flash
+Install via Arduino Library Manager (Tools → Manage Libraries):
 
-### 5.1 USB Flash (first time)
+1. **FastLED** (latest version)
+   - For WS2812 RGB LED control
+2. **TCA9554** (latest version)
+   - For I2C I/O expander
+3. **Ethernet** (included with ESP32 core)
+   - For W5500 support
+4. **PubSubClient** (latest version)
+   - For MQTT communication
 
-1. Connect USB‑C.
-2. Select the serial port under **Tools → Port**.
-3. **Sketch → Upload**. First flash can take ~30–60s.
-4. Open **Serial Monitor** at **115200 8N1** to watch boot logs.
+Optional libraries (already included with ESP32):
+- WiFi
+- ESPmDNS
+- ArduinoOTA
+- WebServer
+- Wire
+- SPI
 
-### 5.2 OTA Updates (after first USB flash)
+### Board Settings
 
-1. With the board on the same LAN, Arduino IDE shows a **Network Port** like `relayboard-xx at 192.168.x.x`.
-2. Select that port and **Upload**.  
-    *Tip:* If OTA fails intermittently, briefly re‑flash over USB to reset the OTA credentials and try again.
+Configure in Arduino IDE (Tools menu):
 
-### 5.3 Ethernet Bring‑Up (Optional)
+```
+Board: "ESP32S3 Dev Module"
+USB CDC On Boot: "Enabled"
+Flash Size: "16MB (128Mb)"
+Partition Scheme: "Custom" (use included partitions.csv)
+PSRAM: "OPI PSRAM"
+Upload Speed: "921600"
+```
 
-- Plug Ethernet into the Waveshare board (PoE or standard).
-- On boot you should see `ETH` logs and a DHCP lease. If you need a fixed IP, create a **DHCP reservation** in your router.
-- If both Wi‑Fi and Ethernet are active, the code favors the interface that acquires first (Rev 1). You can change priority in the `bringupEthernet_()` / Wi‑Fi init sections.
+**Important**: Use the provided `partitions.csv` file for proper OTA support:
+- NVS: 20KB
+- OTA Data: 8KB  
+- App0: 3MB
+- App1: 3MB (for OTA)
+- SPIFFS: ~10MB
 
----
+## 🚀 Installation
 
-## 6) Running &amp; Using the Device
+### 1. Download the Firmware
 
-### 6.1 Web UI
-
-- Browse to `http://<device-ip>/` or `http://relayboard-xx.local/` (mDNS).
-- You should see relay buttons (tinted for **ON**, clear for **OFF**), DI indicators, and status.
-- On first boot, all relays should be **OFF** (active‑low hardware, handled in init). If they click on at power, see **Troubleshooting ▶ Power‑on glitch**.
-
-### 6.2 Automation‑Friendly HTTP Patterns
-
-Rev 1 exposes simple routes (patterned after `server.on(...)` in the .ino):
-
-- `GET /api/info` → firmware/build info, interface (Wi‑Fi/Eth), IP, uptime
-- `GET /api/relays` → returns an 8‑bit mask (or simple JSON) of relay states
-- `POST /api/relays?set=<mask>` → sets all relays via bitmask
-- `POST /api/relay/<n>?on=0|1` → sets a single relay `0..7`
-- `GET /api/di` → returns 8‑bit DI snapshot (1 = high level on the MCU pin)
-
-> **Note:** If your copy of Rev 1 diverges, search the sketch for `server.on(` and adjust your scripts accordingly. We keep routes minimal and deterministic for test rigs.
-
-### 6.3 MQTT
-
-MQTT is now integrated in for Rev 2
-
-- `relayboard/<host>/di` – DI bitmask
-- `relayboard/<host>/relay` – relay bitmask
-- `relayboard/<host>/status` – online/uptime/IP
-
-Add subscriptions for `relayboard/<host>/cmd` if you need remote control via broker.
-
----
-
-## 7) Example: Quick Automation from a PC
-
-### 7.1 Curl
-
+Clone or download this repository:
 ```bash
-# Read relay mask
-curl http://relayboard-xx.local/api/relays
-
-# Turn relay 3 ON (bit 3)
-curl -X POST "http://relayboard-xx.local/api/relay/3?on=1"
-
-# Set all relays (bitmask, e.g., 0x05 => relays 0 and 2 ON)
-curl -X POST "http://<ip>/api/relays?set=0x05"
-
-
+git clone https://github.com/abrinlee/ESP32-S3-POE-ETH-8DI-8RO-Python-Ethernet-WiFi-AP-Mode.git
 ```
 
-### 7.2 Python (requests)
+### 2. Arduino IDE Setup
 
-```python
-import requests as r
-base = "http://relayboard-xx.local"
-print(r.get(base+"/api/info").json())
-mask = int(r.get(base+"/api/di").text, 0)
-print(f"DI mask: 0x{mask:02X}")
-# Toggle relay 0
-r.post(base+"/api/relay/0", params={"on": 1})
+1. Extract files to your Arduino sketch folder (e.g., `~/Arduino/esp32_s3_8ch_relayboard_rgb/`)
+2. Ensure the folder name matches the `.ino` file name
+3. Verify the following files exist:
+   ```
+   esp32_s3_8ch_relayboard_rgb/
+   ├── esp32_s3_8ch_relayboard_rgb.ino  (main sketch)
+   ├── BoardPins.h                       (pin definitions)
+   ├── RgbLed_WS2812.h                   (RGB LED class)
+   ├── RgbLed_WS2812.cpp                 (RGB LED implementation)
+   ├── StateHelpers.h                    (state helper functions)
+   └── partitions.csv                    (partition table)
+   ```
 
+### 3. Configure Network Settings
 
-```
-
----
-
-## 8) Troubleshooting
-
-### 8.1 Build/Compile
-
-**Error:** `unterminated raw string` around `HTML_INDEX[] PROGMEM = R"rawliteral(`  
-**Fix:** Close the raw literal with **`)rawliteral";`**. Example:
+Edit the main `.ino` file and update these constants near line 173:
 
 ```cpp
-const char HTML_INDEX[] PROGMEM = R"rawliteral(
-<!doctype html>
-<html> ...
-</html>
-)rawliteral";
+// WiFi Credentials
+#define WIFI_SSID   "your_wifi_ssid"
+#define WIFI_PASS   "your_wifi_password"
 
-
+// Device Hostname (used for mDNS and AP name)
+#define HOSTNAME    "relayboard"
 ```
 
-**Error:** `#include nested depth 200 exceeds maximum`  
-**Cause:** Accidentally pasted .ino contents into `BoardPins.h` or circular includes.  
-**Fix:** Keep `BoardPins.h` lean (pins + tiny helpers). No `#include <Arduino.h>` more than once if not needed, and no `#include` of the sketch back into headers.
+### 4. Configure MQTT (Optional)
 
-**Error:** TCA9554 not connected (runtime log)  
-**Checklist:**
-
-- Confirm I²C wiring to the expander (SDA/SCL per `BoardPins.h`)
-- Ensure **pull‑ups** (often 4.7k–10k) to 3.3V – many boards already have them
-- Verify the **address** (A0–A2 straps) matches the code (e.g., 0x20)
-- Use `i2cdetect` (external adapter) or add a quick I²C scan in `setup()` for debug
-
-**Error:** `ETH` bring‑up fails  
-**Checklist:**
-
-- W5500 **CS/MOSI/MISO/SCLK** match `BoardPins.h` and share SPI with care
-- Provide a brief **RST** pulse (code includes optional `W5500_RST_PIN` block)
-- Ensure **ESP32 core 3.x**; older cores differ in ETH init APIs
-- Try Wi‑Fi first to validate the rest of the stack
-
-**OTA not appearing in Arduino’s Port list**
-
-- Make sure board and PC are on the **same subnet**
-- Reboot the board once; in IDE, toggle **Network Discovery**
-- As a last resort, USB‑flash once to refresh OTA credentials
-
-### 8.2 Power‑On Glitch (Relays click at boot)
-
-- The hardware is **active‑low**; we stage outputs safely:
-    
-    
-    1. Write **all‑OFF** to the **output register** while pins are still **inputs**
-    2. Switch pins to **outputs** (now they drive low or high deterministically)
-- Confirm your init follows that order (Rev 1 does in the TCA setup helper).
-
-### 8.3 mDNS / Hostname not resolving
-
-- Use the raw IP once, then fix router’s **DHCP reservation** for stability
-- Some corporate networks block `.local` – use the IP in automation scripts
-
-### 8.4 WS2812 status LED dark or erratic
-
-- Verify the **GPIO** and **LED count** in `RgbLed_WS2812.*`
-- Avoid long blocking delays; refresh the LED in the main loop state machine
-
-### 8.5 Serial goes away after Ethernet starts
-
-- Normal with network‑first designs. Keep a short grace‑period before switching logs to network, or simply rely on **USB‑CDC** Serial (recommended) for lab use.
-
----
-
-## 9) Code Conventions (Rev 1)
-
-- **Pins &amp; constants** live in `BoardPins.h` (namespaced; tiny inline helpers allowed)
-- **No business logic** in headers; avoid circular includes
-- **Active‑low relays** abstracted behind helpers `getRelayMask()`, `setRelayBit()`, etc.
-- **Status LED** shows: Boot (white), Wi‑Fi/Eth connect (green), Error (red), Action (blue pulse)
-- **Web UI** served from `HTML_INDEX[]` raw literal in PROGMEM
-
----
-
-## 10) Extending for Production Test
-
-- Add **/api/sequence** that accepts a simple JSON script (steps, delays, assertions) if you want test recipes uploaded from the line PC.
-- Add **MQTT publishing** for DI/relay masks every N ms; consume from your factory orchestrator.
-- Consider a **result log** endpoint: `/api/log` (append mode) to stream outcome lines to a NAS.
-
----
-
-## 11) Versioning &amp; Attribution
-
-- Tag releases as **Rev N** in the header banner.
-- Keep this BookStack page version‑locked to the matching code zip.
-- **License:** *Creative Commons Attribution 4.0 International (CC BY 4.0)*.  
-    Required attribution: **“Antony E. Brinlee — ESP32‑S3 8‑DI/8‑Relay Test Automation (Rev 1)”**.
-
----
-
-## 12) Appendix
-
-### 12.1 Known‑Good Toolchain Snapshot
-
-- Arduino IDE 2.3.x
-- ESP32 core 3.0.x
-- TCA9554 0.4.x
-- FastLED 3.6.x *(if used)*
-
-### 12.2 Quick I²C Scan Snippet
+Edit MQTT settings near line 188:
 
 ```cpp
-#include <Wire.h>
-void scanI2C() {
-  byte cnt=0; Serial.println("I2C scan...");
-  for (byte addr=1; addr<127; addr++) {
-    Wire.beginTransmission(addr);
-    if (Wire.endTransmission()==0) { Serial.printf("Found 0x%02X\n", addr); cnt++; }
+// MQTT Broker Configuration
+#define MQTT_BROKER_IP IPAddress(192, 168, 0, 94)  // Your MQTT broker IP
+#define MQTT_PORT 1883
+#define MQTT_USER "mqtt_username"
+#define MQTT_PASS "mqtt_password"
+#define MQTT_CLIENT_ID "relayboard-client"
+```
+
+To disable MQTT, comment out the MQTT setup calls in `setup()` and `loop()`.
+
+### 5. Upload Partition Table
+
+**Critical Step**: Upload the custom partition table before uploading the sketch:
+
+1. Open the sketch in Arduino IDE
+2. Select: Tools → Partition Scheme → Custom
+3. Place `partitions.csv` in the sketch folder
+4. Tools → Partition → Upload Partition Table
+5. Wait for completion
+
+### 6. Compile and Upload
+
+1. Select the correct COM port: Tools → Port → (your ESP32 port)
+2. Click Upload (or press Ctrl+U)
+3. Monitor serial output: Tools → Serial Monitor (115200 baud)
+
+### 7. First Boot
+
+On first boot, the board will:
+1. Initialize all peripherals (TCA9554, SPI, I2C)
+2. Attempt Ethernet connection (if cable connected)
+3. Fall back to WiFi if configured
+4. Fall back to Access Point mode if WiFi fails
+
+Monitor the serial output (115200 baud) to see:
+```
+[BOOT] ESP32-S3 8-Channel Relay Board initializing...
+[BOOT] Initializing peripherals...
+[BOOT] Initializing MQTT...
+[ETH] Bringing up Ethernet...
+[ETH] Link status: LinkON (1)
+[ETH] IP address: 192.168.1.100
+[NET] Selected Ethernet mode
+[WEB] Using Ethernet HTTP server on :80
+[BOOT] Setup complete
+```
+
+## ⚙️ Configuration
+
+### Network Priority
+
+The firmware implements automatic failover with priority:
+
+**Priority Order**:
+1. **Ethernet** (highest priority)
+2. **WiFi Station**
+3. **Access Point** (fallback)
+
+**Switching Logic**:
+- Requires ~800ms of stable connection before switching
+- Automatically detects link state and IP acquisition
+- Gracefully handles network transitions
+- Stops inactive servers to prevent conflicts
+
+### Access Point Mode
+
+If both Ethernet and WiFi fail, the board creates an AP:
+
+```
+SSID: relayboard-AP (or HOSTNAME-AP)
+Password: (none - open network)
+IP Address: 192.168.4.1
+```
+
+Access the web UI at: `http://192.168.4.1`
+
+### Static IP Configuration
+
+For Ethernet static IP, edit `bringupEthernet_()` function:
+
+```cpp
+// Replace DHCP code with:
+Ethernet.begin(mac, IPAddress(192, 168, 1, 100),  // IP
+                    IPAddress(192, 168, 1, 1),    // Gateway
+                    IPAddress(255, 255, 255, 0)); // Subnet
+```
+
+For WiFi static IP, edit `wifiBegin()` function:
+
+```cpp
+WiFi.config(IPAddress(192, 168, 1, 100),  // IP
+            IPAddress(192, 168, 1, 1),    // Gateway
+            IPAddress(255, 255, 255, 0)); // Subnet
+```
+
+### mDNS Discovery
+
+Access the board via hostname:
+```
+http://relayboard-xx.local/  (xx = last 2 bytes of MAC)
+```
+
+Note: mDNS may not work on all networks (especially with Ethernet).
+
+## 🌐 Network Modes
+
+### Mode Detection
+
+The firmware automatically detects and switches between network modes:
+
+```cpp
+MODE_ETH  (3)  // Ethernet connected with valid IP
+MODE_WIFI (2)  // WiFi station connected
+MODE_AP   (1)  // Access Point mode
+MODE_NONE (0)  // No network
+```
+
+### Ethernet Mode
+
+**Features**:
+- W5500 SPI Ethernet controller
+- DHCP or static IP
+- PoE support (hardware)
+- Automatic link detection
+- HTTP server on port 80
+
+**LED Indicator**: Blue blink
+
+**HTTP Server**: Custom `EthernetServer` implementation (not WebServer)
+
+**Note**: OTA updates are disabled in Ethernet mode (use WiFi for OTA).
+
+### WiFi Station Mode
+
+**Features**:
+- Connects to configured AP
+- DHCP or static IP
+- ArduinoOTA support
+- mDNS discovery
+- HTTP server on port 80
+
+**LED Indicator**: Green blink
+
+### Access Point Mode
+
+**Features**:
+- Creates open AP (no password)
+- Fixed IP: 192.168.4.1
+- ArduinoOTA support
+- HTTP server on port 80
+
+**LED Indicator**: Red blink
+
+**Activation**: Automatic fallback when Ethernet and WiFi fail
+
+## 🖥️ Web Interface
+
+Access the web interface by navigating to the board's IP address in a browser.
+
+### Features
+
+- **Relay Control Panel**:
+  - 8 color-coded relay buttons
+  - Visual state indication (tinted when ON)
+  - Click to toggle individual relays
+  - All ON / All OFF quick controls
+
+- **Digital Input Monitor**:
+  - 8 input status indicators
+  - Red dot = Active (pulled low)
+  - Gray dot = Inactive
+  - Real-time updates
+
+- **Network Information**:
+  - Current interface (Ethernet/WiFi/AP)
+  - IP address
+  - WiFi SSID (if applicable)
+  - Signal strength (WiFi only)
+  - MQTT connection status
+
+- **Event Log**:
+  - Last 50 events displayed
+  - Relay state changes
+  - Digital input transitions
+  - Network events
+  - Auto-refresh every 3 seconds
+  - Clear log button
+
+- **System Controls**:
+  - Reboot button
+  - Diagnostics endpoint link
+  - Responsive design for mobile
+
+### Color Coding
+
+Each relay has a unique color for easy identification:
+
+| Relay | Color |
+|-------|-------|
+| Relay 1 | 🔴 Red |
+| Relay 2 | 🟠 Orange |
+| Relay 3 | 🟡 Yellow |
+| Relay 4 | 🟢 Chartreuse |
+| Relay 5 | 🟢 Green |
+| Relay 6 | 🔵 Cyan |
+| Relay 7 | 🔵 Blue |
+| Relay 8 | 🟣 Magenta |
+
+## 📡 API Endpoints
+
+All endpoints return JSON or plain text responses.
+
+### GET /
+
+Returns the main web UI (HTML/CSS/JS single page).
+
+### GET /api/state
+
+Returns current system state.
+
+**Response**:
+```json
+{
+  "mask": 5,              // Binary relay state (bit 0 = relay 1, etc.)
+  "mqtt_connected": true,
+  "di_mask": 3,           // Binary DI state (bit 0 = DI 1, etc.)
+  "di": [1, 1, 0, 0, 0, 0, 0, 0],  // Individual DI states (1=active/low)
+  "count": 8,             // Number of relays
+  "net": {
+    "iface": "Ethernet",
+    "ip": "192.168.1.100",
+    "ssid": "",           // WiFi SSID (empty for Ethernet)
+    "rssi": 0             // WiFi signal strength (0 for Ethernet)
   }
-  Serial.printf("Done. %u device(s).\n", cnt);
 }
-
-
 ```
 
-### 12.3 Minimal WS2812 Blink (1 LED)
+### GET /api/relay?idx=X&on=Y
+
+Control a single relay.
+
+**Parameters**:
+- `idx` or `index`: Relay index (0-7)
+- `on` or `state`: `1`/`true`/`on` = ON, `0`/`false`/`off` = OFF
+
+**Example**:
+```bash
+curl "http://192.168.1.100/api/relay?idx=0&on=1"  # Turn relay 1 ON
+curl "http://192.168.1.100/api/relay?idx=7&on=0"  # Turn relay 8 OFF
+```
+
+**Response**: Same as `/api/state`
+
+### POST /api/relay
+
+Control a single relay (POST method).
+
+**Body** (form-urlencoded):
+```
+idx=0&on=1
+```
+
+**Response**: Same as `/api/state`
+
+### POST /api/mask
+
+Set all relays at once using a bitmask.
+
+**Body** (form-urlencoded):
+```
+value=85  (binary: 01010101 = relays 1,3,5,7 ON)
+```
+
+**Example**:
+```bash
+curl -X POST -d "value=255" http://192.168.1.100/api/mask  # All ON
+curl -X POST -d "value=0" http://192.168.1.100/api/mask    # All OFF
+curl -X POST -d "value=170" http://192.168.1.100/api/mask  # Even relays
+```
+
+**Response**: Same as `/api/state`
+
+### GET /api/log
+
+Returns the event log (last 200 events, returns last 50).
+
+**Response**:
+```json
+{
+  "lines": [
+    {
+      "id": 1,
+      "ms": 1234,
+      "txt": "Relay 1 ON"
+    },
+    ...
+  ]
+}
+```
+
+### POST /api/log/clear
+
+Clears the event log.
+
+**Response**: `"cleared"` (text/plain)
+
+### GET /api/diag
+
+Returns diagnostic information.
+
+**Response**:
+```json
+{
+  "ota_ready": true,
+  "ota_port": 3232,
+  "heap": 245678
+}
+```
+
+### GET /reboot
+
+Reboots the device.
+
+**Response**: `"rebooting"` (text/plain)
+
+## 📨 MQTT Integration
+
+The firmware includes comprehensive MQTT support for integration with home automation systems.
+
+### MQTT Configuration
+
+Edit these defines in the main `.ino` file (around line 188):
 
 ```cpp
-#include "RgbLed_WS2812.h"
-RgbLed ws(38, 1); // pin, count
-void setup(){ ws.begin(); ws.set(0, 16,16,16); ws.show(); }
-void loop(){ ws.set(0, 0,32,0); ws.show(); delay(250); ws.set(0, 32,0,0); ws.show(); delay(250);}
-
-
+#define MQTT_BROKER_IP IPAddress(192, 168, 0, 94)
+#define MQTT_PORT 1883
+#define MQTT_USER "username"
+#define MQTT_PASS "password"
+#define MQTT_CLIENT_ID "relayboard-client"
+#define MQTT_BASE_TOPIC "relayboard"
 ```
 
-## Programming
+### Topic Structure
 
-# ESP32-S3 Relay Board – Arduino IDE Settings (Waveshare 8-Relay)
+**Relay State Publishing** (device → broker):
+```
+relayboard/relay/0/state  → "ON" or "OFF"
+relayboard/relay/1/state  → "ON" or "OFF"
+...
+relayboard/relay/7/state  → "ON" or "OFF"
+relayboard/relays/state   → "01010101" (8-bit binary mask)
+```
 
-<div class="_tableContainer_1rjym_1" id="bkmrk-setting-value-why-bo"><div class="group _tableWrapper_1rjym_13 flex w-fit flex-col-reverse" tabindex="-1"><table class="w-fit min-w-(--thread-content-width)" data-end="1722" data-start="247"><thead data-end="272" data-start="247"><tr data-end="272" data-start="247"><th data-col-size="sm" data-end="257" data-start="247">Setting</th><th data-col-size="md" data-end="265" data-start="257">Value</th><th data-col-size="md" data-end="272" data-start="265">Why</th></tr></thead><tbody data-end="1722" data-start="287"><tr data-end="364" data-start="287"><td data-col-size="sm" data-end="299" data-start="287">**Board**</td><td data-col-size="md" data-end="322" data-start="299">`ESP32S3 Dev Module`</td><td data-col-size="md" data-end="364" data-start="322">Matches the module on the relay board.</td></tr><tr data-end="433" data-start="365"><td data-col-size="sm" data-end="387" data-start="365">**USB CDC On Boot**</td><td data-col-size="md" data-end="399" data-start="387">`Enabled`</td><td data-col-size="md" data-end="433" data-start="399">Serial over USB from power-up.</td></tr><tr data-end="507" data-start="434"><td data-col-size="sm" data-end="454" data-start="434">**CPU Frequency**</td><td data-col-size="md" data-end="473" data-start="454">`240 MHz (WiFi)`</td><td data-col-size="md" data-end="507" data-start="473">Standard max clock with Wi-Fi.</td></tr><tr data-end="584" data-start="508"><td data-col-size="sm" data-end="531" data-start="508">**Core Debug Level**</td><td data-col-size="md" data-end="571" data-start="531">`None` *(or `Error` while debugging)*</td><td data-col-size="md" data-end="584" data-start="571">Optional.</td></tr><tr data-end="651" data-start="585"><td data-col-size="sm" data-end="607" data-start="585">**USB DFU On Boot**</td><td data-col-size="md" data-end="620" data-start="607">`Disabled`</td><td data-col-size="md" data-end="651" data-start="620">We use UART/CDC bootloader.</td></tr><tr data-end="768" data-start="652"><td data-col-size="sm" data-end="695" data-start="652">**Erase All Flash Before Sketch Upload**</td><td data-col-size="md" data-end="736" data-start="695">`Disabled` *(enable only when needed)*</td><td data-col-size="md" data-end="768" data-start="736">Full wipe only for recovery.</td></tr><tr data-end="818" data-start="769"><td data-col-size="sm" data-end="789" data-start="769">**Events Run On**</td><td data-col-size="md" data-end="800" data-start="789">`Core 1`</td><td data-col-size="md" data-end="818" data-start="800">Default; fine.</td></tr><tr data-end="897" data-start="819"><td data-col-size="sm" data-end="836" data-start="819">**Flash Mode**</td><td data-col-size="md" data-end="851" data-start="836">`QIO 80 MHz`</td><td data-col-size="md" data-end="897" data-start="851">Correct for the 16-MB flash on this board.</td></tr><tr data-end="1001" data-start="898"><td data-col-size="sm" data-end="915" data-start="898">**Flash Size**</td><td data-col-size="md" data-end="932" data-start="915">`16MB (128Mb)`</td><td data-col-size="md" data-end="1001" data-start="932">**Important**—prevents “exceeds flash chip size 0x400000” errors.</td></tr><tr data-end="1078" data-start="1002"><td data-col-size="sm" data-end="1021" data-start="1002">**JTAG Adapter**</td><td data-col-size="md" data-end="1034" data-start="1021">`Disabled`</td><td data-col-size="md" data-end="1078" data-start="1034">Enable only if you use an external JTAG.</td></tr><tr data-end="1124" data-start="1079"><td data-col-size="sm" data-end="1101" data-start="1079">**Arduino Runs On**</td><td data-col-size="md" data-end="1112" data-start="1101">`Core 1`</td><td data-col-size="md" data-end="1124" data-start="1112">Default.</td></tr><tr data-end="1184" data-start="1125"><td data-col-size="sm" data-end="1156" data-start="1125">**USB Firmware MSC On Boot**</td><td data-col-size="md" data-end="1169" data-start="1156">`Disabled`</td><td data-col-size="md" data-end="1184" data-start="1169">Not needed.</td></tr><tr data-end="1258" data-start="1185"><td data-col-size="sm" data-end="1208" data-start="1185">**Partition Scheme**</td><td data-col-size="md" data-end="1219" data-start="1208">`Custom`</td><td data-col-size="md" data-end="1258" data-start="1219">Points to the partitions.csv below.</td></tr><tr data-end="1343" data-start="1259"><td data-col-size="sm" data-end="1271" data-start="1259">**PSRAM**</td><td data-col-size="md" data-end="1289" data-start="1271">**`QPI PSRAM`**</td><td data-col-size="md" data-end="1343" data-start="1289">The S3 module on this board uses **QPI**, not OPI.</td></tr><tr data-end="1419" data-start="1344"><td data-col-size="sm" data-end="1362" data-start="1344">**Upload Mode**</td><td data-col-size="md" data-end="1386" data-start="1362">`UART / Hardware CDC`</td><td data-col-size="md" data-end="1419" data-start="1386">For standard USB programming.</td></tr><tr data-end="1520" data-start="1420"><td data-col-size="sm" data-end="1439" data-start="1420">**Upload Speed**</td><td data-col-size="md" data-end="1497" data-start="1439">`115200` *(safe)* or `921600` *(faster, stable cables)*</td><td data-col-size="md" data-end="1520" data-start="1497">Start conservative.</td></tr><tr data-end="1620" data-start="1521"><td data-col-size="sm" data-end="1536" data-start="1521">**USB Mode**</td><td data-col-size="md" data-end="1589" data-start="1536">`Hardware CDC and JTAG` *(or just `Hardware CDC`)*</td><td data-col-size="md" data-end="1620" data-start="1589">Either works; CDC required.</td></tr><tr data-end="1665" data-start="1621"><td data-col-size="sm" data-end="1639" data-start="1621">**Zigbee Mode**</td><td data-col-size="md" data-end="1652" data-start="1639">`Disabled`</td><td data-col-size="md" data-end="1665" data-start="1652">Not used.</td></tr><tr data-end="1722" data-start="1666"><td data-col-size="sm" data-end="1683" data-start="1666">**Programmer**</td><td data-col-size="md" data-end="1695" data-start="1683">`Default`</td><td data-col-size="md" data-end="1722" data-start="1695">N/A for USB bootloader.</td></tr></tbody></table>
+**Relay Command Subscription** (broker → device):
+```
+relayboard/relay/0/command  ← "ON" or "OFF"
+relayboard/relay/1/command  ← "ON" or "OFF"
+...
+relayboard/relay/7/command  ← "ON" or "OFF"
+relayboard/relays/command   ← "01010101" (8-bit binary mask)
+```
 
-</div></div>---
+**Digital Input State Publishing** (device → broker):
+```
+relayboard/input/0/state  → "ON" or "OFF"  (ON = active/low)
+relayboard/input/1/state  → "ON" or "OFF"
+...
+relayboard/input/7/state  → "ON" or "OFF"
+relayboard/inputs/state   → "01010101" (8-bit binary mask)
+```
 
-## Custom Partition Table (place as **partitions.csv**)
+### MQTT Features
 
-<div class="contain-inline-size rounded-2xl relative bg-token-sidebar-surface-primary" id="bkmrk-nvs%2C-data%2C-nvs%2C-0x90"><div class="sticky top-9"><div class="absolute end-0 bottom-0 flex h-9 items-center pe-2"><div class="bg-token-bg-elevated-secondary text-token-text-secondary flex items-center gap-4 rounded-sm px-2 font-sans text-xs">  
-</div></div></div><div class="overflow-y-auto p-4" dir="ltr">`nvs,      data, nvs,     0x9000,   0x5000otadata,  data, ota,     0xE000,   0x2000app0,     app,  ota_0,   0x10000,  0x300000app1,     app,  ota_1,   0x310000, 0x300000spiffs,   data, spiffs,  0x610000, 0x9F0000`</div></div>**Layout summary (16 MB flash):**
+- **Automatic Connection**: Connects on boot and reconnects on disconnect
+- **Retained Messages**: All state messages are retained for last known state
+- **QoS 0**: Used for all messages (at most once delivery)
+- **State Publishing**:
+  - Individual relay state on change
+  - Bulk relay state every 5 seconds
+  - Individual input state on change
+  - Bulk input state on change
+- **Command Processing**:
+  - Individual relay control via commands
+  - Bulk relay control via mask command
+- **Connection Indicator**: Visible in web UI
 
-- **OTA slots:** 2 × 3.0 MB (app0/app1)
-- **SPIFFS:** ~9.94 MB (from 0x610000 to end)
-- **NVS + otadata:** standard offsets
+### Home Assistant Integration
 
-> In Arduino IDE: **Tools → Partition Scheme → Custom**, and make sure the sketch is using this `partitions.csv` in the project root (or reference it via your boards.txt if you manage boards definitions).
+Example `configuration.yaml` entries:
+
+```yaml
+mqtt:
+  switch:
+    - name: "Relay 1"
+      state_topic: "relayboard/relay/0/state"
+      command_topic: "relayboard/relay/0/command"
+      payload_on: "ON"
+      payload_off: "OFF"
+      
+  binary_sensor:
+    - name: "Digital Input 1"
+      state_topic: "relayboard/input/0/state"
+      payload_on: "ON"
+      payload_off: "OFF"
+      device_class: occupancy
+```
+
+### Node-RED Integration
+
+Use MQTT nodes to subscribe to state topics and publish to command topics:
+
+```json
+[
+  {
+    "id": "mqtt-in",
+    "type": "mqtt in",
+    "topic": "relayboard/relay/+/state",
+    "broker": "mqtt-broker"
+  },
+  {
+    "id": "mqtt-out",
+    "type": "mqtt out",
+    "topic": "relayboard/relay/0/command",
+    "broker": "mqtt-broker"
+  }
+]
+```
+
+## 💡 RGB Status LED
+
+The onboard WS2812 RGB LED provides visual feedback for system status.
+
+### Network Mode Indicators
+
+- **🔴 Red blink** (150ms): Access Point mode
+- **🟢 Green blink** (150ms): WiFi Station mode  
+- **🔵 Blue blink** (150ms): Ethernet mode
+- **⚫ Off**: No network connection
+
+### Relay State Visualization
+
+When any relay is active:
+
+- **Single relay ON**: Shows corresponding color from palette
+- **Multiple relays ON**: Shows blended/average color
+- **All relays ON**: White
+- **No relays ON**: Returns to network mode indicator
+
+### Heartbeat
+
+When no relays are active (idle mode):
+- Brief pulse every 5 seconds using the network mode color
+- Can be disabled: `rgb.setHeartbeatEnabled(false);`
+
+### LED Configuration
+
+Customize in `RgbLed_WS2812.h`:
+
+```cpp
+#define LED_COLOR_ORDER RGB  // Change to GRB if colors are wrong
+
+// Palette (modify if desired):
+static constexpr uint8_t PALETTE[8][3] = {
+  {255,   0,   0}, // 0: Red
+  {255, 128,   0}, // 1: Orange
+  {255, 255,   0}, // 2: Yellow
+  {128, 255,   0}, // 3: Chartreuse
+  {  0, 255,   0}, // 4: Green
+  {  0, 255, 255}, // 5: Cyan
+  {  0,   0, 255}, // 6: Blue
+  {255,   0, 255}  // 7: Magenta
+};
+```
+
+## 📁 File Structure
+
+```
+esp32_s3_8ch_relayboard_rgb/
+├── esp32_s3_8ch_relayboard_rgb.ino  # Main sketch (1665 lines)
+│   ├── Network management (Ethernet/WiFi/AP)
+│   ├── Web server implementation
+│   ├── MQTT client implementation
+│   ├── HTTP handlers
+│   ├── Digital input polling
+│   ├── Event logging system
+│   └── Main setup() and loop()
+│
+├── BoardPins.h                       # Pin definitions (140 lines)
+│   ├── W5500 Ethernet pins
+│   ├── I2C pins (TCA9554)
+│   ├── Digital input pins array
+│   ├── Peripheral pins (RGB, buzzer, etc.)
+│   └── Convenience helper functions
+│
+├── RgbLed_WS2812.h                   # RGB LED class definition (130 lines)
+│   ├── Color palette for 8 relays
+│   ├── Network mode indicators
+│   ├── Heartbeat configuration
+│   └── Public API methods
+│
+├── RgbLed_WS2812.cpp                 # RGB LED implementation (130 lines)
+│   ├── FastLED integration
+│   ├── Color blending for multiple relays
+│   ├── Network mode visualization
+│   ├── Heartbeat pulse logic
+│   └── State management
+│
+├── StateHelpers.h                    # State helper functions (70 lines)
+│   ├── Digital input mask functions
+│   ├── Active-low conversion helpers
+│   ├── Relay state accessors
+│   └── Bit manipulation utilities
+│
+└── partitions.csv                    # Custom partition table
+    ├── NVS (20KB)
+    ├── OTA Data (8KB)
+    ├── App0 (3MB) - Primary firmware
+    ├── App1 (3MB) - OTA update slot
+    └── SPIFFS (10MB) - File storage
+```
+
+### Key Components
+
+1. **Main Sketch** (`esp32_s3_8ch_relayboard_rgb.ino`):
+   - Network priority and failover logic
+   - Dual HTTP server support (WebServer for WiFi/AP, EthernetServer for Ethernet)
+   - MQTT client with auto-reconnect
+   - Web UI served from PROGMEM
+   - JSON API implementation
+   - Event logging system with ring buffer
+   - Digital input change detection
+
+2. **BoardPins.h**:
+   - Single source of truth for pin mappings
+   - Namespace-based organization to avoid globals
+   - Backward compatibility aliases
+   - Helper functions for I2C, SPI, and DI initialization
+
+3. **RgbLed_WS2812 Class**:
+   - Encapsulates all LED logic
+   - FastLED-based for precise timing
+   - Configurable color order (RGB/GRB)
+   - Idle detection for heartbeat
+   - Network mode and relay state visualization
+
+4. **StateHelpers.h**:
+   - Header-only utility functions
+   - Active-low DI conversion (hardware is active-low)
+   - Relay state accessors
+   - Reusable for other projects (RS485, MQTT gateways)
+
+5. **Custom Partition Table**:
+   - Allocates 6MB for OTA (2x 3MB app slots)
+   - Large SPIFFS partition for future expansion
+   - Proper alignment for ESP32-S3
+
+## 🔍 Troubleshooting
+
+### Compilation Issues
+
+**Error: "Ethernet.h: No such file or directory"**
+- Solution: Update ESP32 board support to v3.x
+- Verify: Tools → Board Manager → "ESP32" by Espressif
+
+**Error: "TCA9554.h: No such file or directory"**
+- Solution: Install TCA9554 library via Library Manager
+- Search: "TCA9554" by Rob Tillaart
+
+**Error: "FastLED.h: No such file or directory"**
+- Solution: Install FastLED library via Library Manager
+- Get latest version from Library Manager
+
+**Error: "PubSubClient.h: No such file or directory"**
+- Solution: Install PubSubClient library via Library Manager
+- Search: "PubSubClient" by Nick O'Leary
+
+**Error: Partition table errors**
+- Solution: Ensure `partitions.csv` is in the sketch folder
+- Verify: Tools → Partition Scheme → "Custom"
+- Upload partition table before sketch
+
+### Upload Issues
+
+**Cannot connect to serial port**:
+1. Press and hold BOOT button
+2. Click Upload
+3. Release BOOT when "Connecting..." appears
+4. Or press RST button after upload starts
+
+**Upload fails mid-way**:
+- Reduce upload speed: Tools → Upload Speed → "460800"
+- Check USB cable quality
+- Try different USB port
+
+### Network Issues
+
+**Ethernet not connecting**:
+1. Verify cable is properly connected
+2. Check serial output for W5500 initialization
+3. Verify PoE power supply (if using PoE)
+4. Check LED on RJ45 jack (should blink)
+5. Try manual IP instead of DHCP
+6. Verify SPI connections
+
+**WiFi not connecting**:
+1. Verify SSID and password in configuration
+2. Check WiFi signal strength
+3. Ensure 2.4GHz network (ESP32 doesn't support 5GHz)
+4. Check for special characters in SSID/password
+5. Monitor serial output for connection attempts
+
+**Stuck in AP mode**:
+1. Verify WiFi credentials are correct
+2. Check WiFi network is in range
+3. Try connecting Ethernet cable
+4. Serial monitor shows connection status
+
+**Cannot access via mDNS** (`.local`):
+- mDNS may not work on all networks
+- Use IP address directly
+- Check firewall settings
+- mDNS less reliable with Ethernet
+
+### Relay Issues
+
+**Relays not switching**:
+1. Verify TCA9554 is detected (check I2C scan)
+2. Check I2C connections (GPIO 41, 42)
+3. Verify TCA9554 address (default 0x20)
+4. Check power supply to relay board
+5. Serial output shows relay commands
+
+**Relays click but don't switch load**:
+- Check load wiring
+- Verify load voltage/current within ratings
+- Ensure relay contacts are not damaged
+- Test with different load
+
+**Relays in wrong state at boot**:
+- Code initializes all relays OFF at boot
+- Check hardware power-on glitches
+- Verify TCA9554 initialization
+
+### MQTT Issues
+
+**Cannot connect to MQTT broker**:
+1. Verify broker IP address and port
+2. Check username/password if authentication enabled
+3. Ensure broker is running (`sudo systemctl status mosquitto`)
+4. Check firewall rules (allow port 1883)
+5. Monitor serial output for connection attempts
+6. Check web UI for MQTT connection status
+
+**MQTT messages not received**:
+1. Verify subscriptions are correct
+2. Check QoS settings
+3. Monitor broker logs
+4. Use MQTT client (mosquitto_sub) to test
+5. Verify topic structure matches code
+
+**MQTT disconnects frequently**:
+1. Check network stability
+2. Increase keepalive interval in PubSubClient
+3. Monitor broker resource usage
+4. Check for broker connection limits
+
+### Digital Input Issues
+
+**Inputs not detecting changes**:
+1. Verify input wiring (opto-isolated, active-low)
+2. Check external power supply for inputs
+3. Monitor serial output for state changes
+4. Inputs are active-LOW (pulled to ground when active)
+5. Try different input channel
+
+**Input states inverted**:
+- Hardware is active-low by design
+- Code uses `StateHelpers.h` for conversion
+- `diActive()` returns 1 when input is pulled LOW
+
+### RGB LED Issues
+
+**LED not lighting**:
+1. Verify FastLED library is installed
+2. Check GPIO 38 connection
+3. Verify power supply
+4. Try different LED_COLOR_ORDER (RGB vs GRB)
+
+**Wrong colors**:
+- Change `LED_COLOR_ORDER` in `RgbLed_WS2812.h`:
+  ```cpp
+  #define LED_COLOR_ORDER GRB  // Try GRB instead of RGB
+  ```
+
+**LED stays one color**:
+- Check relay states (LED shows relay colors when active)
+- Verify heartbeat is enabled
+- Check network mode detection
+
+### Web Interface Issues
+
+**Web page not loading**:
+1. Verify correct IP address
+2. Check network connectivity
+3. Try different browser
+4. Clear browser cache
+5. Check serial output for HTTP requests
+6. Verify server is running (check mode detection logs)
+
+**Buttons not working**:
+1. Check JavaScript console for errors
+2. Verify API endpoints are responding
+3. Monitor serial output for POST requests
+4. Check Content-Type headers
+
+**Status not updating**:
+- JavaScript polls `/api/state` every 500ms
+- Check browser network tab for failed requests
+- Verify JSON responses are valid
+
+### General Debugging
+
+**Enable verbose logging**:
+```cpp
+// Add to setup():
+esp_log_level_set("*", ESP_LOG_DEBUG);
+```
+
+**Monitor serial output** (115200 baud):
+- Shows network state changes
+- Displays relay commands
+- Reports digital input changes
+- Logs HTTP requests
+- MQTT connection status
+
+**Check diagnostics**:
+- Browse to `/api/diag` for system info
+- Check heap memory
+- Verify OTA status
+
+**I2C scanner**:
+```cpp
+// Add to setup() for troubleshooting:
+for (byte addr = 1; addr < 127; addr++) {
+  Wire.beginTransmission(addr);
+  if (Wire.endTransmission() == 0) {
+    Serial.printf("Found I2C device at 0x%02X\n", addr);
+  }
+}
+```
+
+**Expected I2C addresses**:
+- TCA9554: 0x20 (relay I/O expander)
+- PCF85063: 0x51 (RTC, if populated)
+
+## 📄 License
+
+**Author**: Antony E. Brinlee  
+**License**: GNU General Public License v2.0  
+**Release**: Rev 1  
+**Date**: October 2024
+
+This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+## 🙏 Acknowledgments
+
+- **Waveshare** for the ESP32-S3-POE-ETH-8DI-8RO hardware
+- **Espressif** for the ESP32-S3 platform and Arduino core
+- **FastLED** library for precise WS2812 control
+- **PubSubClient** library for MQTT support
+- Community contributors and testers
+
+## 📚 Additional Resources
+
+- **Waveshare Wiki**: [ESP32-S3-ETH-8DI-8RO](https://www.waveshare.com/wiki/ESP32-S3-ETH-8DI-8RO)
+- **ESP32 Arduino Core**: [GitHub](https://github.com/espressif/arduino-esp32)
+- **FastLED Documentation**: [fastled.io](http://fastled.io/)
+- **MQTT Protocol**: [mqtt.org](https://mqtt.org/)
+- **Home Assistant MQTT**: [Integration Docs](https://www.home-assistant.io/integrations/mqtt/)
+
+## 🔄 Future Enhancements
+
+Potential features for future releases:
+
+- [ ] SD card logging
+- [ ] Web-based configuration editor
+- [ ] Modbus RTU/TCP support via RS485
+- [ ] CANbus support (for -C variant)
+- [ ] Real-time clock integration
+- [ ] Scheduled relay operations
+- [ ] Email/SMS alerts
+- [ ] Advanced MQTT discovery for Home Assistant
+- [ ] RESTful API with authentication
+- [ ] Web-based firmware updates
+- [ ] Configuration backup/restore
 
 ---
 
-## Entering Bootloader (Manual)
+**Questions or Issues?** Open an issue on GitHub or check the troubleshooting section above.
 
-1. **Hold `BOOT`**
-2. **Tap `RESET (EN)`** while holding `BOOT`
-3. **Release `BOOT`** after ~1 s
-4. Click **Upload** in Arduino
-
-If uploads hang at:
-
-<div class="contain-inline-size rounded-2xl relative bg-token-sidebar-surface-primary" id="bkmrk-connecting........__"><div class="sticky top-9"><div class="absolute end-0 bottom-0 flex h-9 items-center pe-2"><div class="bg-token-bg-elevated-secondary text-token-text-secondary flex items-center gap-4 rounded-sm px-2 font-sans text-xs">  
-</div></div></div><div class="overflow-y-auto p-4" dir="ltr">`Connecting........<span class="hljs-strong">____</span><span class="hljs-emphasis">_.....<span class="hljs-strong">____</span></span>_.....`</div></div>repeat the BOOT/RESET sequence and try again.
-
----
-
-## Common Recovery / Build Errors
-
-- **`exceeds flash chip size 0x400000`**  
-    → Set **Flash Size = 16MB (128Mb)** and use the **Custom** partition above.
-- **Random reboots / heap issues** on larger sketches  
-    → Ensure **PSRAM = QPI PSRAM** (not Disabled/OPI).
-- **Corrupted filesystem or odd boot logs**  
-    → Temporarily set **Tools → Erase All Flash Before Sketch Upload → Enabled**, upload once, then set back to Disabled.
-- **Hard-brick symptoms** (can’t enter bootloader)  
-    → Disconnect external circuits on **GPIO0/EN/TX/RX**, power via USB only, then retry BOOT/RESET sequence.
-
----
-
-## Optional: Full Flash Erase (last resort)
-
-<div class="contain-inline-size rounded-2xl relative bg-token-sidebar-surface-primary" id="bkmrk-esptool.py---chip-es"><div class="sticky top-9"><div class="absolute end-0 bottom-0 flex h-9 items-center pe-2"><div class="bg-token-bg-elevated-secondary text-token-text-secondary flex items-center gap-4 rounded-sm px-2 font-sans text-xs">  
-</div></div></div><div class="overflow-y-auto p-4" dir="ltr">`esptool.py --chip esp32s3 --port COMx erase_flash`</div></div>Then re-upload with the settings above.
-
-</body></html>
+**Contributions Welcome!** Pull requests are appreciated. Please test thoroughly before submitting.
