@@ -1601,7 +1601,7 @@ void loop() {
         }
       }
       // Publish all inputs state after any change
-      mqttPublishAllInputStates();
+      //mqttPublishAllInputStates();
       prev_di_mask = cur_di_mask;
     }
     lastDIPoll = now;
